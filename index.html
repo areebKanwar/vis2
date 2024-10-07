@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fire Data Visualizations for Policymakers</title>
+    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h2, h3 {
+            text-align: center;
+        }
+        p {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .legend {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        #filterDiv {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            display: flex;
+            justify-content: space-between; /* Add space between charts */
+        }
+        .chart {
+            width: 45%;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Fire Data in Australia (Proportional Symbol Map)</h2>
+
+<p>
+    This map visualizes fire intensity across Australia using data from NASA's FIRMS VIIRS. It aims to inform policymakers about fire-prone areas to help in developing effective fire management strategies. 
+</p>
+
+<!-- Dropdown filter -->
+<div id="filterDiv">
+    <label for="intensityFilter">Filter by Fire Intensity:</label>
+    <select id="intensityFilter">
+        <option value="all">All</option>
+        <option value="low">Low (FRP < 50)</option>
+        <option value="medium">Medium (FRP 50-150)</option>
+        <option value="high">High (FRP > 150)</option>
+    </select>
+</div>
+
+<!-- Container for the map and bar chart -->
+<div class="chart-container">
+    <div class="chart" id="symbol"></div>
+    <div class="chart" id="bar-chart"></div>
+</div>
+
+<h3>Fire Incidents by Fire Radiative Power (FRP)</h3>
+
+<script type="text/javascript">
+    // Function to filter data based on dropdown selection
+    function getFilterData(filter) {
+        let filterCondition = {};
+        if (filter === 'low') {
+            filterCondition = {"field": "frp", "lt": 50};
+        } else if (filter === 'medium') {
+            filterCondition = {"field": "frp", "range": [50, 150]};
+        } else if (filter === 'high') {
+            filterCondition = {"field": "frp", "gt": 150};
+        }
+        return filterCondition;
+    }
+
+    // Rendering the Vega-Lite chart
+    function renderChart(filter) {
+        const filterCondition = getFilterData(filter);
+
+        const fireLayer = {
+            "data": {"url": "fire_data_australia.csv"},
+            "mark": {"type": "circle", "opacity": 0.7, "stroke": "black", "strokeWidth": 0.5},
+            "encoding": {
+                "longitude": {"field": "longitude", "type": "quantitative"},
+                "latitude": {"field": "latitude", "type": "quantitative"},
+                "size": {
+                    "field": "frp", 
+                    "type": "quantitative", 
+                    "scale": {"range": [20, 1000]},
+                    "legend": {"title": "Fire Intensity (FRP)"}
+                },
+                "color": {
+                    "field": "frp", 
+                    "type": "quantitative",
+                    "scale": {"scheme": "reds"},
+                    "legend": {"title": "Fire Intensity"}
+                },
+                "tooltip": [
+                    {"field": "acq_date", "type": "temporal", "title": "Date"},
+                    {"field": "frp", "type": "quantitative", "title": "Fire Radiative Power"}
+                ]
+            }
+        };
+
+        if (filter !== 'all') {
+            fireLayer.transform = [{"filter": filterCondition}];
+        }
+
+        vegaEmbed('#symbol', {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "width": 700,
+            "height": 500,
+            "projection": {
+                "type": "mercator",  
+                "center": [134, -28],  
+                "scale": 700
+            },
+            "layer": [
+                {
+                    "data": {"url": "australia_outline.geojson"},
+                    "mark": {
+                      "type": "geoshape",
+                      "stroke": "darkgray",
+                      "strokeWidth": 1,
+                      "fill": "#f0f0f0"
+                    }
+                },
+                // Line Annotation for Tropic of Capricorn
+                {
+                    "mark": {"type": "rule", "color": "blue", "strokeWidth": 1},
+                    "encoding": {
+                        "y": {"datum": -23.5, "type": "quantitative"},
+                    }
+                },
+                {
+                    "mark": {"type": "text", "align": "left", "dx": 10, "dy": -15, "fontSize": 14, "fontWeight": "bold", "color": "blue"},
+                    "encoding": {
+                        "longitude": {"datum": 134, "type": "quantitative"},
+                        "latitude": {"datum": -23.5, "type": "quantitative"},
+                        "text": {"value": "Tropic of Capricorn"}
+                    }
+                },
+                fireLayer
+            ]
+        });
+
+        // Bar chart for Fire Incidents by Fire Radiative Power (FRP)
+        vegaEmbed('#bar-chart', {
+            "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+            "data": {"url": "fire_data_australia.csv"},
+            "transform": [
+                {
+                    "aggregate": [{"op": "count", "as": "Fire Count"}],
+                    "groupby": ["frp"]
+                }
+            ],
+            "mark": "bar",
+            "encoding": {
+                "x": {"field": "frp", "type": "quantitative", "bin": true, "title": "Fire Radiative Power (FRP)"},
+                "y": {"field": "Fire Count", "type": "quantitative", "title": "Number of Fire Incidents"},
+                "color": {"field": "frp", "type": "quantitative", "scale": {"scheme": "reds"}, "legend": null},
+                "tooltip": [
+                    {"field": "frp", "type": "quantitative", "title": "Fire Intensity (FRP)"},
+                    {"field": "Fire Count", "type": "quantitative", "title": "Fire Incidents"}
+                ]
+            }
+        });
+    }
+
+    // Initial render
+    renderChart('all');
+
+    // Event listener for drop-down filtering
+    document.getElementById('intensityFilter').addEventListener('change', function() {
+        const filterValue = this.value;
+        renderChart(filterValue);
+    });
+</script>
+
+</body>
+</html>
